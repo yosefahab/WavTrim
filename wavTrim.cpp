@@ -1,23 +1,22 @@
 #include <iostream>
 using namespace std;
 
-#define BUFFER_LENGTH 4096
 #define VERBOSE 1
-#define DEFAULT_TRIM_RATIO 0.5f
+#define DEFAULT_TRIM_RATIO 0.2f
 
-// @details The WAVE file format is a subset of Microsoft's RIFF specification for the storage of multimedia files.
+// The WAVE file format is a subset of Microsoft's RIFF specification for the storage of multimedia files.
 // A RIFF file starts out with a file header followed by a sequence of data chunks.
 // A WAVE file is often just a RIFF file with a single "WAVE" chunk which consists of two sub-chunks.
 typedef struct WAV_HEADER {
     // RIFF chunk descriptor
     char ChunkID[4];    // RIFF header, contains the word "RIFF"      Magic Number
-    uint32_t ChunkSize; // RIFF Chunk size, the entire file in bytes minus 8 bytes (ChunkID and ChunkSize)
+    uint32_t ChunkSize; // RIFF Chunk size in bytes, the entire file in bytes minus 8 bytes (ChunkID and ChunkSize)
 
     char WAVE[4]; // WAVE header, contains the word "WAVE"
 
     // fmt sub-chunk, describes the sound data's format
     char Subchunk1ID[4];    // contains the letters "fmt "
-    uint32_t Subchunk1Size; // fmt chunk size, minus 8 bytes (Subchunk1ID and Subchunk1Size)
+    uint32_t Subchunk1Size; // fmt chunk size in bytes, minus 8 bytes (Subchunk1ID and Subchunk1Size)
     uint16_t AudioFormat;   // audio format 1=PCM, 6=mulaw, 7=alaw, 257=IBM Mu-Law, 258=IBM A-Law, 259=ADPCM
     uint16_t NumChannels;   // number of channels 1=Mono 2=Sterio
     uint32_t SampleRate;    // sampling Frequency in Hz
@@ -27,7 +26,7 @@ typedef struct WAV_HEADER {
 
     // data sub-chunk
     char Subchunk2ID[4];    // WAVE Header, contains the word "data"
-    uint32_t Subchunk2Size; // data chunk size
+    uint32_t Subchunk2Size; // data chunk size in bytes
 
 } Wav_hdr;
 // @brief Displays header information of .wav file
@@ -118,23 +117,22 @@ inline Wav_hdr read_header(FILE* wavFile) {
     return wavHeader;
 }
 // @brief Reads data chunk of .wav file
+// @param trimRatio: Percentage of data to KEEP
 // @returns Pointer to data buffer
 inline int8_t* read_data(FILE* wavFile, Wav_hdr& wavHeader, const float& trimRatio = DEFAULT_TRIM_RATIO) {
     // keep only <trimRatio> % of the data
 
-    // @bug modifying subchunk2size before reading incorrectly reads the file
-    const uint32_t Subchunk2Size = wavHeader.Subchunk2Size;
-    // read Subchunk2Size bytes over 1 byte chunks
-    int8_t* buffer = new int8_t[Subchunk2Size * trimRatio];
-    while (fread(buffer, sizeof(buffer[0]), Subchunk2Size / sizeof(buffer[0]), wavFile) > 0)
-        ;
-
-    assert(sanity_check_header(wavHeader) == 1);
-
+    // update header to new size after trim
     wavHeader.ChunkSize -= ((1 - trimRatio) * wavHeader.Subchunk2Size);
     wavHeader.Subchunk2Size *= trimRatio;
 
-    cout << "Successfully read " << Subchunk2Size << " bytes of data" << endl;
+    // read Subchunk2Size bytes over 1 byte chunks
+    int8_t* buffer = new int8_t[wavHeader.Subchunk2Size];
+    const size_t bytesRead = fread(buffer, sizeof(buffer[0]), wavHeader.Subchunk2Size / sizeof(buffer[0]), wavFile);
+
+    assert(sanity_check_header(wavHeader) == 1);
+
+    cout << "Successfully read " << bytesRead << " bytes of data" << endl;
     return buffer;
 }
 
@@ -158,7 +156,7 @@ inline void display_help_msg() {
          << endl;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* argv[]) {
     if (argc < 2) {
         display_help_msg();
         return 0;
