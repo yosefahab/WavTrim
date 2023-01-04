@@ -1,8 +1,17 @@
+#include <algorithm>
 #include <iostream>
 using namespace std;
 
-#define VERBOSE 1
-#define DEFAULT_TRIM_RATIO 0.2f
+bool VERBOSE = false;
+float TRIM_RATIO = 0.5f;
+
+template <typename... Args>
+void log(const char* format, Args... args) {
+    if (VERBOSE == false) {
+        return;
+    }
+    printf(format, args...);
+}
 
 // The WAVE file format is a subset of Microsoft's RIFF specification for the storage of multimedia files.
 // A RIFF file starts out with a file header followed by a sequence of data chunks.
@@ -29,6 +38,7 @@ typedef struct WAV_HEADER {
     uint32_t Subchunk2Size; // data chunk size in bytes
 
 } Wav_hdr;
+
 // @brief Displays header information of .wav file
 inline void display_header(const int& fileLength, const Wav_hdr& wavHeader) {
     cout << "\n----------------Header Info----------------\n";
@@ -90,36 +100,37 @@ inline int get_file_size(FILE* file) {
 inline FILE* load_wav(const string& path) {
     FILE* wavFile = fopen(path.c_str(), "rb");
     if (wavFile == NULL) {
-        cout << "Error opening wave file!\n";
-        // @todo write to stderr
+        cerr << "Error opening wave file! check the file path!!\n";
         exit(1);
     }
-    cout << "Successfully opened wave file\n";
+    log("%s", "Successfully opened wave file\n");
     return wavFile;
 }
+
 // @todo more sanity checks
 inline bool sanity_check_header(const Wav_hdr& wavHeader) {
     return ((wavHeader.SampleRate * wavHeader.NumChannels * wavHeader.BitsPerSample / 8) == wavHeader.ByteRate) &&
            ((wavHeader.NumChannels * wavHeader.BitsPerSample / 8) == wavHeader.BlockAlign);
 }
+
 // @brief Reads header chunk of .wav file
 inline Wav_hdr read_header(FILE* wavFile) {
     Wav_hdr wavHeader;
     size_t itemsRead = fread(&wavHeader, sizeof(Wav_hdr), 1, wavFile);
     assert(itemsRead == 1);
-    cout << "Successfully read " << itemsRead << " header." << endl;
 
     if (sanity_check_header(wavHeader) == false) {
-        cout << "Corrupt header, exiting" << endl;
-        // @todo write to stderr
+        cerr << "Corrupt header, exiting" << endl;
         exit(1);
     }
+    log("Successfully read ", itemsRead, " header.", '\n');
     return wavHeader;
 }
+
 // @brief Reads data chunk of .wav file
 // @param trimRatio: Percentage of data to KEEP
 // @returns Pointer to data buffer
-inline int8_t* read_data(FILE* wavFile, Wav_hdr& wavHeader, const float& trimRatio = DEFAULT_TRIM_RATIO) {
+inline int8_t* read_data(FILE* wavFile, Wav_hdr& wavHeader, const float& trimRatio) {
     // keep only <trimRatio> % of the data
 
     // update header to new size after trim
@@ -131,58 +142,98 @@ inline int8_t* read_data(FILE* wavFile, Wav_hdr& wavHeader, const float& trimRat
     const size_t bytesRead = fread(buffer, sizeof(buffer[0]), wavHeader.Subchunk2Size / sizeof(buffer[0]), wavFile);
 
     assert(sanity_check_header(wavHeader) == 1);
-
-    cout << "Successfully read " << bytesRead << " bytes of data" << endl;
+    log("%s %zu %s \n", "Successfully read ", bytesRead, " bytes of data.");
     return buffer;
 }
 
 inline void save_wav(const string& fileName, const Wav_hdr& wavHeader, int8_t* data) {
-    FILE* wavFile = fopen(("trimmed_" + fileName + ".wav").c_str(), "wb");
+    FILE* wavFile = fopen(fileName.c_str(), "wb");
     fwrite(&wavHeader, sizeof(Wav_hdr), 1, wavFile);
     fwrite(data, wavHeader.Subchunk2Size, 1, wavFile);
     fclose(wavFile);
+    log("%s", "Successfully saved file.\n");
 }
 
 inline void display_help_msg() {
-    cout << "\nUsage:\n"
+    cout << "Usage:\n"
             "       wavTrim <infile> [options]\n"
             "Options:\n"
             "   -h                      Display this help message\n"
             "   -o <outfile>            Outfile name (Default= \"trimmed_\"+<infile>)\n"
-            "   -v                      Specify verbosity\n"
+            "   -v                      Verbose output\n"
             "   -r <ratio>              Trim .wav file by <ratio> (Default = 0.5)\n"
             "   -s                      Trim from start\n"
-            "   -e                      Trim from end\n"
+            "   -e                      Trim from end\n" // @todo implement
          << endl;
 }
 
-int main(int argc, const char* argv[]) {
+char* getCmdOption(char** begin, char** end, const std::string& option) {
+    char** itr = find(begin, end, option);
+    if (itr != end && ++itr != end) {
+        return *itr;
+    }
+    return nullptr;
+}
+
+bool cmdOptionExists(char** begin, char** end, const std::string& option) {
+    return std::find(begin, end, option) != end;
+}
+
+inline void parse_argv(const int& argc, char* argv[]) {
     if (argc < 2) {
         display_help_msg();
-        return 0;
+        exit(0);
     }
-    // @todo parse argv
+    if (cmdOptionExists(argv, argv + argc, "-h")) {
+        display_help_msg();
+        exit(0);
+    }
+    if (cmdOptionExists(argv, argv + argc, "-v")) {
+        VERBOSE = true;
+    }
+    // @warning unsafe conversion
+    if (cmdOptionExists(argv, argv + argc, "-r")) {
+        TRIM_RATIO = atof(getCmdOption(argv, argv + argc, "-o"));
+    }
+}
 
+int main(int argc, char* argv[]) {
+    parse_argv(argc, argv);
+
+    // ################load wav file################//
     const string infile = argv[1];
     FILE* wavFile = load_wav(infile);
-    const int fileLength = get_file_size(wavFile);
+    // #######################################//
 
+    // ################read wav header################//
     Wav_hdr wavHeader = read_header(wavFile);
     if (VERBOSE) {
-        display_header(fileLength, wavHeader);
+        display_header(get_file_size(wavFile), wavHeader);
     }
+    // #######################################//
 
-    int8_t* data = read_data(wavFile, wavHeader);
-    const string outfile = infile.substr(0, infile.size() - 4);
-    save_wav(outfile, wavHeader, data);
+    int8_t* data = read_data(wavFile, wavHeader, TRIM_RATIO);
+
+    // ################get output file name################//
+    string outFile("trimmed_" + infile.substr(0, infile.size() - 4) + ".wav");
+    if (cmdOptionExists(argv, argv + argc, "-o")) {
+        outFile = getCmdOption(argv, argv + argc, "-o");
+    }
+    // #######################################//
+
+    // ################save wav file################//
+    save_wav(outFile, wavHeader, data);
     if (VERBOSE) {
         // new file size after trimming <trim ratio>
         display_header(wavHeader.Subchunk2Size + sizeof(Wav_hdr), wavHeader);
     }
+    // #######################################//
 
+    // ################cleanup################//
     delete[] data;
     data = nullptr;
     fclose(wavFile);
+    // #######################################//
 
     cout << endl;
     return 0;
