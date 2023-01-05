@@ -1,22 +1,11 @@
+#include "logs.cpp"
 #include <algorithm>
 #include <iostream>
+
 using namespace std;
 
 bool VERBOSE = false;
 float TRIM_RATIO = 0.5f;
-
-template <typename... Args>
-void log(const char* format, Args... args) {
-    if (VERBOSE == false) {
-        return;
-    }
-    printf(format, args...);
-}
-
-inline void logErr(const string& err) {
-    cerr << err << endl;
-    exit(1);
-}
 
 // The WAVE file format is a subset of Microsoft's RIFF specification for the storage of multimedia files.
 // A RIFF file starts out with a file header followed by a sequence of data chunks.
@@ -106,7 +95,7 @@ inline FILE* load_wav(const string& path) {
     if (wavFile == NULL) {
         logErr("Error opening wave file! check the file path!!");
     }
-    log("%s", "Successfully opened wave file\n");
+    log("%s", "Successfully opened wave file.\n");
     return wavFile;
 }
 
@@ -159,20 +148,7 @@ inline void save_wav(const string& fileName, const Wav_hdr& wavHeader, int8_t* d
     fwrite(&wavHeader, sizeof(Wav_hdr), 1, wavFile);
     fwrite(data, wavHeader.Subchunk2Size, 1, wavFile);
     fclose(wavFile);
-    log("%s", "Successfully saved file.\n");
-}
-
-inline void display_help_msg() {
-    cout << "Usage:\n"
-            "       wavTrim <infile> [options]\n"
-            "Options:\n"
-            "   -h                      Display this help message\n"
-            "   -o <outfile>            Outfile name (Default= \"trimmed_\"+<infile>)\n"
-            "   -v                      Verbose output\n"
-            "   -r <ratio>              Trim .wav file by <ratio> (Default = 0.5)\n"
-            "   -s <offset>             Seek to specified offset\n" // @todo implement
-            "   -e                      Trim from end\n"
-         << endl;
+    log("Successfully saved to file: %s\n", fileName.c_str());
 }
 
 char* getCmdOption(char** begin, char** end, const string& option) {
@@ -201,7 +177,10 @@ inline void parse_argv(const int& argc, char* argv[]) {
 
     // @warning unsafe conversion
     if (cmdOptionExists(argv, argv + argc, "-r")) {
-        TRIM_RATIO = atof(getCmdOption(argv, argv + argc, "-r"));
+        TRIM_RATIO = stof(getCmdOption(argv, argv + argc, "-r"));
+        if (TRIM_RATIO > 1) {
+            logErr("Ratio must not be greater than 1!.");
+        }
     }
 }
 
@@ -222,25 +201,26 @@ int main(int argc, char* argv[]) {
     const bool fromEnd = cmdOptionExists(argv, argv + argc, "-e");
     // float offset = 0;
     // if (cmdOptionExists(argv, argv + argc, "-o")) {
-    //     offset = atof(getCmdOption(argv, argv + argc, "-o"));
+    //     offset = stof(getCmdOption(argv, argv + argc, "-o"));
     // }
     // ################read wav data################//
     int8_t* data = read_data(wavFile, wavHeader, TRIM_RATIO, fromEnd);
     fclose(wavFile);
+    if (VERBOSE) {
+        // new file size after trimming <trim ratio>
+        display_header(wavHeader.Subchunk2Size + sizeof(Wav_hdr), wavHeader);
+    }
 
     // ################get output file name################//
     string outFile("trimmed_" + infile.substr(0, infile.size() - 4) + ".wav");
     if (cmdOptionExists(argv, argv + argc, "-o")) {
         outFile = getCmdOption(argv, argv + argc, "-o");
     }
+
     // ################save wav file################//
     save_wav(outFile, wavHeader, data);
     delete[] data;
     data = nullptr;
-    if (VERBOSE) {
-        // new file size after trimming <trim ratio>
-        display_header(wavHeader.Subchunk2Size + sizeof(Wav_hdr), wavHeader);
-    }
 
     cout << endl;
     return 0;
