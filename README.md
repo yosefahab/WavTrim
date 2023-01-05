@@ -15,7 +15,7 @@ Command line tool for trimming .wav files by the specified ratio.
 
     -r <ratio>              Amount of data to KEEP (Default = 0.5)
 
-    -s                      Trim from start
+    -s <offset>             Seek to specified offset
 
     -e                      Trim from end
 

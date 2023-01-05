@@ -13,6 +13,11 @@ void log(const char* format, Args... args) {
     printf(format, args...);
 }
 
+inline void logErr(const string& err) {
+    cerr << err << endl;
+    exit(1);
+}
+
 // The WAVE file format is a subset of Microsoft's RIFF specification for the storage of multimedia files.
 // A RIFF file starts out with a file header followed by a sequence of data chunks.
 // A WAVE file is often just a RIFF file with a single "WAVE" chunk which consists of two sub-chunks.
@@ -50,7 +55,7 @@ inline void display_header(const int& fileLength, const Wav_hdr& wavHeader) {
          << wavHeader.ChunkID[2]
          << wavHeader.ChunkID[3] << '\n';
 
-    cout << "Chunk size                 :" << wavHeader.ChunkSize << '\n';
+    cout << "Chunk size                 :" << wavHeader.ChunkSize << " bytes.\n";
 
     cout
         << "WAVE header                :"
@@ -66,7 +71,7 @@ inline void display_header(const int& fileLength, const Wav_hdr& wavHeader) {
          << wavHeader.Subchunk1ID[2]
          << wavHeader.Subchunk1ID[3]
          << '\n';
-    cout << "Subchunk1 Size             :" << wavHeader.Subchunk1Size << '\n';
+    cout << "Subchunk1 Size             :" << wavHeader.Subchunk1Size << " bytes.\n";
 
     // Audio format 1=PCM, 6=mulaw, 7=alaw, 257=IBM Mu-Law, 258=IBM A-Law, 259=ADPCM
     cout << "Audio Format               :" << wavHeader.AudioFormat << '\n';
@@ -82,7 +87,7 @@ inline void display_header(const int& fileLength, const Wav_hdr& wavHeader) {
          << wavHeader.Subchunk2ID[2]
          << wavHeader.Subchunk2ID[3]
          << '\n';
-    cout << "Subchunk2 (Data) Size      :" << wavHeader.Subchunk2Size << '\n';
+    cout << "Subchunk2 (Data) Size      :" << wavHeader.Subchunk2Size << " bytes.\n";
     cout << "-------------------------------------------";
     cout << endl;
 }
@@ -90,9 +95,7 @@ inline void display_header(const int& fileLength, const Wav_hdr& wavHeader) {
 inline int get_file_size(FILE* file) {
     // move pointer to end of file
     fseek(file, 0, SEEK_END);
-
     const int fileSize = ftell(file);
-
     // move pointer back to start of file
     rewind(file);
     return fileSize;
@@ -101,8 +104,7 @@ inline int get_file_size(FILE* file) {
 inline FILE* load_wav(const string& path) {
     FILE* wavFile = fopen(path.c_str(), "rb");
     if (wavFile == NULL) {
-        cerr << "Error opening wave file! check the file path!!\n";
-        exit(1);
+        logErr("Error opening wave file! check the file path!!");
     }
     log("%s", "Successfully opened wave file\n");
     return wavFile;
@@ -121,8 +123,7 @@ inline Wav_hdr read_header(FILE* wavFile) {
     assert(itemsRead == 1);
 
     if (sanity_check_header(wavHeader) == false) {
-        cerr << "Corrupt header, exiting" << endl;
-        exit(1);
+        logErr("Corrupt header, exiting");
     }
     log("Successfully read %zu header.\n", itemsRead);
     return wavHeader;
@@ -131,18 +132,23 @@ inline Wav_hdr read_header(FILE* wavFile) {
 // @brief Reads data chunk of .wav file
 // @param trimRatio: Percentage of data to KEEP
 // @returns Pointer to data buffer
-inline int8_t* read_data(FILE* wavFile, Wav_hdr& wavHeader, const float& trimRatio) {
-    // keep only <trimRatio> % of the data
+inline int8_t* read_data(FILE* wavFile, Wav_hdr& wavHeader, const float& trimRatio, const bool& fromEnd) {
+    // if trim from end, seek to the last <bytesToRead> bytes
+    const uint32_t bytesToRead = wavHeader.Subchunk2Size * trimRatio;
+    if (fromEnd == true) {
+        fseek(wavFile, -static_cast<int64_t>(bytesToRead), SEEK_END);
+    }
 
+    // keep only <trimRatio> % of the data
     // update header to new size after trim
-    wavHeader.ChunkSize -= ((1 - trimRatio) * wavHeader.Subchunk2Size);
-    wavHeader.Subchunk2Size *= trimRatio;
+    wavHeader.ChunkSize -= (wavHeader.Subchunk2Size - bytesToRead);
+    wavHeader.Subchunk2Size = bytesToRead;
 
     // read Subchunk2Size bytes over 1 byte chunks
     int8_t* buffer = new int8_t[wavHeader.Subchunk2Size];
     const size_t bytesRead = fread(buffer, sizeof(buffer[0]), wavHeader.Subchunk2Size / sizeof(buffer[0]), wavFile);
 
-    assert(bytesRead == wavHeader.Subchunk2Size);
+    assert(bytesRead == bytesToRead);
     assert(sanity_check_header(wavHeader) == 1);
     log("Successfully read %zu bytes of data.\n", bytesRead);
     return buffer;
@@ -164,8 +170,8 @@ inline void display_help_msg() {
             "   -o <outfile>            Outfile name (Default= \"trimmed_\"+<infile>)\n"
             "   -v                      Verbose output\n"
             "   -r <ratio>              Trim .wav file by <ratio> (Default = 0.5)\n"
-            "   -s                      Trim from start\n"
-            "   -e                      Trim from end\n" // @todo implement
+            "   -s <offset>             Seek to specified offset\n" // @todo implement
+            "   -e                      Trim from end\n"
          << endl;
 }
 
@@ -185,6 +191,10 @@ inline void parse_argv(const int& argc, char* argv[]) {
     if (argc < 2 || cmdOptionExists(argv, argv + argc, "-h")) {
         display_help_msg();
         exit(0);
+    }
+
+    if (cmdOptionExists(argv, argv + argc, "-e") && cmdOptionExists(argv, argv + argc, "-s")) {
+        logErr("Please only specify one of {-e, -s} flags, not both.");
     }
 
     VERBOSE = cmdOptionExists(argv, argv + argc, "-v");
@@ -208,8 +218,14 @@ int main(int argc, char* argv[]) {
         display_header(get_file_size(wavFile), wavHeader);
     }
 
+    // @attention fromEnd is guaranteed to false if offset flag is specified.
+    const bool fromEnd = cmdOptionExists(argv, argv + argc, "-e");
+    // float offset = 0;
+    // if (cmdOptionExists(argv, argv + argc, "-o")) {
+    //     offset = atof(getCmdOption(argv, argv + argc, "-o"));
+    // }
     // ################read wav data################//
-    int8_t* data = read_data(wavFile, wavHeader, TRIM_RATIO);
+    int8_t* data = read_data(wavFile, wavHeader, TRIM_RATIO, fromEnd);
     fclose(wavFile);
 
     // ################get output file name################//
@@ -217,7 +233,6 @@ int main(int argc, char* argv[]) {
     if (cmdOptionExists(argv, argv + argc, "-o")) {
         outFile = getCmdOption(argv, argv + argc, "-o");
     }
-
     // ################save wav file################//
     save_wav(outFile, wavHeader, data);
     delete[] data;
