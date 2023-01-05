@@ -9,7 +9,7 @@ Command line tool for trimming .wav files by the specified ratio.
     -h                      Display help message
 
     -o <outfile>            Specify output file name,
-                            by default wavTrim will ad "trimmed_" suffice to input file (trimmed_<infile>.wav)
+                            by default wavTrim will add "trimmed_" prefix to input file (trimmed_<infile>.wav)
 
     -v                      Allow log information to be printed to stdout
 
