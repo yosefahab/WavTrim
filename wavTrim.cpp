@@ -34,58 +34,37 @@ typedef struct WAV_HEADER {
 } Wav_hdr;
 
 // @brief Displays header information of .wav file
-inline void display_header(const int& fileLength, const Wav_hdr& wavHeader) {
-    cout << "\n----------------Header Info----------------\n";
-    cout << "File size                  :" << fileLength << " bytes.\n";
+void display_header(const uint32_t& fileLength, const Wav_hdr& wavHeader) {
+    log("%s", "\n----------------Header Info----------------\n");
+    log("File size                  :%d bytes.\n", fileLength);
 
-    cout << "RIFF header                :"
-         << wavHeader.ChunkID[0]
-         << wavHeader.ChunkID[1]
-         << wavHeader.ChunkID[2]
-         << wavHeader.ChunkID[3] << '\n';
+    log("RIFF header                :%.4s\n", wavHeader.ChunkID);
 
-    cout << "Chunk size                 :" << wavHeader.ChunkSize << " bytes.\n";
+    log("Chunk size                 :%d bytes.\n", wavHeader.ChunkSize);
 
-    cout
-        << "WAVE header                :"
-        << wavHeader.WAVE[0]
-        << wavHeader.WAVE[1]
-        << wavHeader.WAVE[2]
-        << wavHeader.WAVE[3]
-        << '\n';
+    log("WAVE header                :%.4s\n", wavHeader.WAVE);
 
-    cout << "FMT                        :"
-         << wavHeader.Subchunk1ID[0]
-         << wavHeader.Subchunk1ID[1]
-         << wavHeader.Subchunk1ID[2]
-         << wavHeader.Subchunk1ID[3]
-         << '\n';
-    cout << "Subchunk1 Size             :" << wavHeader.Subchunk1Size << " bytes.\n";
+    log("FMT                        :%s\n", wavHeader.Subchunk1ID);
+
+    log("Subchunk1 Size             :%d bytes.\n", wavHeader.Subchunk1Size);
 
     // Audio format 1=PCM, 6=mulaw, 7=alaw, 257=IBM Mu-Law, 258=IBM A-Law, 259=ADPCM
-    cout << "Audio Format               :" << wavHeader.AudioFormat << '\n';
-    cout << "Number of channels         :" << wavHeader.NumChannels << '\n';
-    cout << "Sampling Rate              :" << wavHeader.SampleRate << '\n';
-    cout << "Number of bytes per second :" << wavHeader.ByteRate << '\n';
-    cout << "Block align                :" << wavHeader.BlockAlign << '\n';
-    cout << "Number of bits per sample  :" << wavHeader.BitsPerSample << '\n';
+    log("Audio Format               :%d\n", wavHeader.AudioFormat);
+    log("Number of channels         :%d\n", wavHeader.NumChannels);
+    log("Sampling Rate              :%d\n", wavHeader.SampleRate);
+    log("Number of bytes per second :%d\n", wavHeader.ByteRate);
+    log("Block align                :%d\n", wavHeader.BlockAlign);
+    log("Number of bits per sample  :%d\n", wavHeader.BitsPerSample);
 
-    cout << "Subchunk2ID                :"
-         << wavHeader.Subchunk2ID[0]
-         << wavHeader.Subchunk2ID[1]
-         << wavHeader.Subchunk2ID[2]
-         << wavHeader.Subchunk2ID[3]
-         << '\n';
-    cout << "Subchunk2 (Data) Size      :" << wavHeader.Subchunk2Size << " bytes.\n";
-    cout << "-------------------------------------------";
-    cout << endl;
+    log("Subchunk2ID                :%.4s\n", wavHeader.Subchunk2ID);
+
+    log("Subchunk2 (Data) Size      :%d bytes.\n", wavHeader.Subchunk2Size);
+    log("%s", "-------------------------------------------\n");
 }
 
-inline int get_file_size(FILE* file) {
-    // move pointer to end of file
+uint32_t get_file_size(FILE* file) {
     fseek(file, 0, SEEK_END);
-    const int fileSize = ftell(file);
-    // move pointer back to start of file
+    const uint32_t fileSize = ftell(file);
     rewind(file);
     return fileSize;
 }
@@ -93,14 +72,14 @@ inline int get_file_size(FILE* file) {
 inline FILE* load_wav(const string& path) {
     FILE* wavFile = fopen(path.c_str(), "rb");
     if (wavFile == NULL) {
-        logErr("Error opening wave file! check the file path!!");
+        logErr("Error opening wave file, check the file path!");
     }
     log("%s", "Successfully opened wave file.\n");
     return wavFile;
 }
 
 // @todo more sanity checks
-inline bool sanity_check_header(const Wav_hdr& wavHeader) {
+constexpr bool sanity_check_header(const Wav_hdr& wavHeader) {
     return ((wavHeader.SampleRate * wavHeader.NumChannels * wavHeader.BitsPerSample / 8) == wavHeader.ByteRate) &&
            ((wavHeader.NumChannels * wavHeader.BitsPerSample / 8) == wavHeader.BlockAlign);
 }
@@ -125,7 +104,7 @@ inline int8_t* read_data(FILE* wavFile, Wav_hdr& wavHeader, const float& trimRat
     // if trim from end, seek to the last <bytesToRead> bytes
     const uint32_t bytesToRead = wavHeader.Subchunk2Size * trimRatio;
     if (fromEnd == true) {
-        fseek(wavFile, -static_cast<int64_t>(bytesToRead), SEEK_END);
+        fseek(wavFile, -static_cast<int32_t>(bytesToRead), SEEK_END);
     }
 
     // keep only <trimRatio> % of the data
@@ -159,7 +138,7 @@ char* getCmdOption(char** begin, char** end, const string& option) {
     return nullptr;
 }
 
-inline bool cmdOptionExists(char** begin, char** end, const string& option) {
+bool cmdOptionExists(char** begin, char** end, const string& option) {
     return find(begin, end, option) != end;
 }
 
@@ -175,11 +154,15 @@ inline void parse_argv(const int& argc, char* argv[]) {
 
     VERBOSE = cmdOptionExists(argv, argv + argc, "-v");
 
-    // @warning unsafe conversion
     if (cmdOptionExists(argv, argv + argc, "-r")) {
-        TRIM_RATIO = stof(getCmdOption(argv, argv + argc, "-r"));
-        if (TRIM_RATIO > 1) {
-            logErr("Ratio must not be greater than 1!.");
+        try {
+            // @bug empty <ratio> causes seg fault
+            TRIM_RATIO = stof(getCmdOption(argv, argv + argc, "-r"));
+            if (TRIM_RATIO > 1) {
+                logErr("Ratio must not be greater than 1!.");
+            }
+        } catch (exception) {
+            logErr("Invalid ratio passed, terminating.");
         }
     }
 }
@@ -197,11 +180,11 @@ int main(int argc, char* argv[]) {
         display_header(get_file_size(wavFile), wavHeader);
     }
 
-    // @attention fromEnd is guaranteed to false if offset flag is specified.
+    // @attention fromEnd is guaranteed to be false if the seek flag is specified.
     const bool fromEnd = cmdOptionExists(argv, argv + argc, "-e");
     // float offset = 0;
-    // if (cmdOptionExists(argv, argv + argc, "-o")) {
-    //     offset = stof(getCmdOption(argv, argv + argc, "-o"));
+    // if (cmdOptionExists(argv, argv + argc, "-s")) {
+    //     offset = stof(getCmdOption(argv, argv + argc, "-s"));
     // }
     // ################read wav data################//
     int8_t* data = read_data(wavFile, wavHeader, TRIM_RATIO, fromEnd);
