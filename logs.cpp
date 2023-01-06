@@ -24,7 +24,6 @@ inline void display_help_msg() {
             "   -o <outfile>            Outfile name (Default= \"trimmed_\"+<infile>)\n"
             "   -v                      Verbose output\n"
             "   -r <ratio>              Trim .wav file by <ratio> (Default = 0.5)\n"
-            "   -s <offset>             Seek to specified offset\n" // @todo implement
             "   -e                      Trim from end\n"
          << endl;
 }

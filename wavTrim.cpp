@@ -148,10 +148,6 @@ inline void parse_argv(const int& argc, char* argv[]) {
         exit(0);
     }
 
-    if (cmdOptionExists(argv, argv + argc, "-e") && cmdOptionExists(argv, argv + argc, "-s")) {
-        logErr("Please only specify one of {-e, -s} flags, not both.");
-    }
-
     VERBOSE = cmdOptionExists(argv, argv + argc, "-v");
 
     if (cmdOptionExists(argv, argv + argc, "-r")) {
@@ -170,23 +166,16 @@ inline void parse_argv(const int& argc, char* argv[]) {
 int main(int argc, char* argv[]) {
     parse_argv(argc, argv);
 
-    // ################load wav file################//
     const string infile = argv[1];
     FILE* wavFile = load_wav(infile);
 
-    // ################read wav header################//
     Wav_hdr wavHeader = read_header(wavFile);
     if (VERBOSE) {
         display_header(get_file_size(wavFile), wavHeader);
     }
 
-    // @attention fromEnd is guaranteed to be false if the seek flag is specified.
     const bool fromEnd = cmdOptionExists(argv, argv + argc, "-e");
-    // float offset = 0;
-    // if (cmdOptionExists(argv, argv + argc, "-s")) {
-    //     offset = stof(getCmdOption(argv, argv + argc, "-s"));
-    // }
-    // ################read wav data################//
+
     int8_t* data = read_data(wavFile, wavHeader, TRIM_RATIO, fromEnd);
     fclose(wavFile);
     if (VERBOSE) {
@@ -194,13 +183,11 @@ int main(int argc, char* argv[]) {
         display_header(wavHeader.Subchunk2Size + sizeof(Wav_hdr), wavHeader);
     }
 
-    // ################get output file name################//
     string outFile("trimmed_" + infile.substr(0, infile.size() - 4) + ".wav");
     if (cmdOptionExists(argv, argv + argc, "-o")) {
         outFile = getCmdOption(argv, argv + argc, "-o");
     }
 
-    // ################save wav file################//
     save_wav(outFile, wavHeader, data);
     delete[] data;
     data = nullptr;

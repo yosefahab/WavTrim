@@ -15,8 +15,6 @@ Command line tool for trimming .wav files by the specified ratio.
 
     -r <ratio>              Amount of data to KEEP (Default = 0.5)
 
-    -s <offset>             Seek to specified offset
-
     -e                      Trim from end
 
 ## Get started
@@ -25,8 +23,22 @@ make
 ```
 
 ## Demo
-```c++
-wavTrim test.wav
+To trim test.wav by 50%
+```
+./wavTrim test.wav
+```
+or
+```
+./wavTrim test.wav -r 0.5
 ```
 
-**Currently a WIP.**
+To specify outfile
+```
+./wavTrim test.wav -o output_file_name.wav
+```
+
+To trim last first 30%
+```
+./wavTrim test.wav -r 0.7 -e
+```
+
