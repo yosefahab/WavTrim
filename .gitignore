@@ -1,3 +1,6 @@
+*.wav
 .ds_store
 .vscode
-.o
+*.o
+*.exe
+*.out
